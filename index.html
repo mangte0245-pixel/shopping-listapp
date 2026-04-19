@@ -166,11 +166,23 @@
     <button class="clear-btn" id="clearBtn">완료된 항목 지우기</button>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    let items = JSON.parse(localStorage.getItem('shopping') || '[]');
+    const SUPABASE_URL = 'https://afeleipmtejipozqcgjt.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmZWxlaXBtdGVqaXBvenFjZ2p0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1NTc5NzAsImV4cCI6MjA5MjEzMzk3MH0.HBo38g9jEuG2sDuBm_MGjiiZIDv6mkxRSzyTy0G3ypQ';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    function save() {
-      localStorage.setItem('shopping', JSON.stringify(items));
+    let items = [];
+
+    async function loadItems() {
+      const { data, error } = await supabase
+        .from('shopping_items')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (!error) {
+        items = data;
+        render();
+      }
     }
 
     function render() {
@@ -183,14 +195,14 @@
       stats.textContent = items.length ? `${done} / ${items.length} 완료` : '';
       empty.style.display = items.length ? 'none' : 'block';
 
-      items.forEach((item, idx) => {
+      items.forEach((item) => {
         const li = document.createElement('li');
         if (item.checked) li.classList.add('done');
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = item.checked;
-        checkbox.addEventListener('change', () => toggle(idx));
+        checkbox.addEventListener('change', () => toggle(item.id, item.checked));
 
         const span = document.createElement('span');
         span.className = 'item-text';
@@ -200,40 +212,64 @@
         delBtn.className = 'delete-btn';
         delBtn.title = '삭제';
         delBtn.textContent = '✕';
-        delBtn.addEventListener('click', () => remove(idx));
+        delBtn.addEventListener('click', () => remove(item.id));
 
         li.append(checkbox, span, delBtn);
         list.appendChild(li);
       });
     }
 
-    function addItem() {
+    async function addItem() {
       const input = document.getElementById('itemInput');
       const text = input.value.trim();
       if (!text) return;
-      items.push({ text, checked: false });
       input.value = '';
-      save();
-      render();
       input.focus();
+      const { data, error } = await supabase
+        .from('shopping_items')
+        .insert({ text, checked: false })
+        .select()
+        .single();
+      if (!error) {
+        items.push(data);
+        render();
+      }
     }
 
-    function toggle(idx) {
-      items[idx].checked = !items[idx].checked;
-      save();
-      render();
+    async function toggle(id, currentChecked) {
+      const { error } = await supabase
+        .from('shopping_items')
+        .update({ checked: !currentChecked })
+        .eq('id', id);
+      if (!error) {
+        const item = items.find(i => i.id === id);
+        if (item) item.checked = !currentChecked;
+        render();
+      }
     }
 
-    function remove(idx) {
-      items.splice(idx, 1);
-      save();
-      render();
+    async function remove(id) {
+      const { error } = await supabase
+        .from('shopping_items')
+        .delete()
+        .eq('id', id);
+      if (!error) {
+        items = items.filter(i => i.id !== id);
+        render();
+      }
     }
 
-    function clearDone() {
-      items = items.filter(i => !i.checked);
-      save();
-      render();
+    async function clearDone() {
+      const doneIds = items.filter(i => i.checked).map(i => i.id);
+      if (!doneIds.length) return;
+      const { error } = await supabase
+        .from('shopping_items')
+        .delete()
+        .in('id', doneIds);
+      if (!error) {
+        items = items.filter(i => !i.checked);
+        render();
+      }
     }
 
     document.getElementById('addBtn').addEventListener('click', addItem);
@@ -242,7 +278,7 @@
       if (e.key === 'Enter') addItem();
     });
 
-    render();
+    loadItems();
   </script>
 </body>
 </html>
